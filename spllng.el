@@ -26,7 +26,7 @@
 It's called narrowed to the changed part with point at the start.")
 
 (defvar spllng-prompt
-  "You're a copy editor.  Respond with the spell-checked text only.  The text is an HTML fragment; keep the same HTML strucure.  If you don't make any changes, return ':no-change' only.  For every changed word, enclose the changed word with <changed orig='...'>...</changed>, where '...' is the word/phrase that was changed.  Do not suggest grammar changes.  Do not change slang or abbreviations like \"readin'\" or \"mainstreamey\".  Use British, not American spelling.  Check for the meaning of the sentences, whether words have been substituted for other words.  Check that noun/verb plurarity agrees.  Make sure you're not marking something as changed when you haven't changed anything, but if you have changed something, make sure that you mark your changes.  Do not include anything else in your answer except the corrected text, even if there is no text included, or there's nothing to be changed.  Preserve white space.  The next line starts the text to spell-check: ")
+  "You're a copy editor.  Respond with the spell-checked text only.  The text is an HTML fragment; keep the same HTML strucure.  Do not add any additional HTML structures.  If you don't make any changes, return ':no-change' only.  For every changed word in the text, transform that word to (spllng-changed :orig \"...\" :changed \"...\") inside the text, and return the changed text.  (If there are embedded quotes in the strings, quote them with a backslash.)  Do not suggest grammar changes.  Do not change slang or abbreviations like \"readin'\" or \"mainstreamey\".  Use British, not American spelling.  Check for the meaning of the sentences, whether words have been substituted for other words.  Check that noun/verb plurarity agrees.  Make sure you're not marking something as changed when you haven't changed anything, but if you have changed something, make sure that you mark your changes.  Do not include anything else in your answer except the corrected text, even if there is no text included, or there's nothing to be changed.  Preserve white space.  The next line starts the text to spell-check: ")
 
 (define-minor-mode spllng-mode
   "Minor mode to spellcheck the buffer.")
@@ -49,36 +49,42 @@ It's called narrowed to the changed part with point at the start.")
     (message "Querying...")
     (let ((new (spllng--check (buffer-substring start end))))
       (if (equal new ":no-change")
-	  (message "No changes")
+	  (progn
+	    (message "No changes")
+	    (goto-char point))
 	(undo-boundary)
 	(save-restriction
 	  (narrow-to-region start end)
 	  (delete-region (point-min) (point-max))
 	  (insert new)
 	  (goto-char (point-min))
-	  (while (re-search-forward "<changed orig='\\([^']+\\)'>\\(.*?\\)</changed>" nil t)
-	    (let ((orig (match-string 1))
-		  (changed (match-string 2)))
-	      (replace-match
-	       (propertize changed
-			   'face 'error
-			   'spllng-changed t
-			   'keymap spllng-word-map
-			   'state 'changed
-			   'start (set-marker (make-marker) (match-beginning 0))
-			   'original orig
-			   'changed changed)
-	       t t)
-	      (put-text-property (match-beginning 0)
-				 (+ (match-beginning 0) (length changed))
-				 'end
-				 (set-marker (make-marker)
-					     (+ (match-beginning 0)
-						(length changed))))))
+	  (while (re-search-forward "(spllng-changed :orig " nil t)
+	    (goto-char (match-beginning 0))
+	    (let ((start (point))
+		  (form (read (current-buffer)))
+		  (end (point)))
+	      (let ((orig (plist-get (cdr form) :orig))
+		    (changed (plist-get (cdr form) :changed)))
+		(delete-region start end)
+		(insert
+		 (propertize changed
+			     'face 'error
+			     'spllng-changed t
+			     'keymap spllng-word-map
+			     'state 'changed
+			     'start (set-marker (make-marker) start)
+			     'original orig
+			     'changed changed))
+		(put-text-property (match-beginning 0)
+				   (+ start (length changed))
+				   'end
+				   (set-marker (make-marker)
+					       (+ start
+						  (length changed)))))))
 	  (goto-char (point-min))
 	  (run-hooks 'spllng-after-change-hook)
-	  (message "Querying...Fixed"))))
-    (goto-char point)))
+	  (spllng-next-word)
+	  (message "Querying...Fixed"))))))
 
 (defun spllng--check (line)
   (query-assistant 'claude (concat spllng-prompt "\n" line)))
@@ -107,8 +113,8 @@ It's called narrowed to the changed part with point at the start.")
 (defun spllng-next-word ()
   "Go to the next changed word."
   (interactive)
-  (if (text-property-search-forward 'spllng-changed nil nil t)
-      (text-property-search-backward 'spllng-changed)
+  (if-let ((match (text-property-search-forward 'spllng-changed nil nil t)))
+      (goto-char (prop-match-beginning match))
     (message "No next word")))
 
 (defun spllng-previous-word ()
