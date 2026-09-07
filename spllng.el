@@ -1,6 +1,6 @@
 ;;; spllng.el --- Check spelling -*- lexical-binding: t -*-
 
-;; Copyright (C) 2025 Free Software Foundation, Inc.
+;; Copyright (C) 2026 Lars Magne Ingebrigtsen
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: wordpress, blogs
@@ -21,25 +21,25 @@
 
 (require 'cl-lib)
 
-(defvar splling-after-change-hook 'ewp--hide-links
+(defvar spllng-after-change-hook 'ewp--hide-links
   "Hook run after changing a portion of the buffer.
 It's called narrowed to the changed part with point at the start.")
 
-(defvar splling-prompt
+(defvar spllng-prompt
   "You're a copy editor.  Respond with the spell-checked text only.  The text is an HTML fragment; keep the same HTML strucure.  If you don't make any changes, return ':no-change' only.  For every changed word, enclose the changed word with <changed orig='...'>...</changed>, where '...' is the word/phrase that was changed.  Do not suggest grammar changes.  Do not change slang or abbreviations like \"readin'\" or \"mainstreamey\".  Use British, not American spelling.  Check for the meaning of the sentences, whether words have been substituted for other words.  Check that noun/verb plurarity agrees.  Make sure you're not marking something as changed when you haven't changed anything, but if you have changed something, make sure that you mark your changes.  Do not include anything else in your answer except the corrected text, even if there is no text included, or there's nothing to be changed.  Preserve white space.  The next line starts the text to spell-check: ")
 
-(define-minor-mode splling-mode
+(define-minor-mode spllng-mode
   "Minor mode to spellcheck the buffer.")
 
-(defvar-keymap splling-mode-map
-  "C-c C-e" #'splling)
+(defvar-keymap spllng-mode-map
+  "C-c C-e" #'spllng)
 
-(defvar-keymap splling-word-map
-  "C-c C-n" #'splling-next-word
-  "C-c C-p" #'splling-previous-word
-  "TAB" #'splling-toggle-word)
+(defvar-keymap spllng-word-map
+  "C-c C-n" #'spllng-next-word
+  "C-c C-p" #'spllng-previous-word
+  "TAB" #'spllng-toggle-word)
 
-(defun splling (start end)
+(defun spllng (start end)
   "Replace the region with a spell-checked region."
   (interactive "r")
   (let ((point (point-marker)))
@@ -62,8 +62,8 @@ It's called narrowed to the changed part with point at the start.")
 	      (replace-match
 	       (propertize changed
 			   'face 'error
-			   'splling-changed t
-			   'keymap splling-word-map
+			   'spllng-changed t
+			   'keymap spllng-word-map
 			   'state 'changed
 			   'start (set-marker (make-marker) (match-beginning 0))
 			   'original orig
@@ -76,14 +76,14 @@ It's called narrowed to the changed part with point at the start.")
 					     (+ (match-beginning 0)
 						(length changed))))))
 	  (goto-char (point-min))
-	  (run-hooks 'splling-after-change-hook)
+	  (run-hooks 'spllng-after-change-hook)
 	  (message "Querying...Fixed"))))
     (goto-char point)))
 
 (defun spllng--check (line)
-  (query-assistant 'claude (concat splling-prompt "\n" line)))
+  (query-assistant 'claude (concat spllng-prompt "\n" line)))
 
-(defun splling-toggle-word ()
+(defun spllng-toggle-word ()
   "Toggle the fixed word under point."
   (interactive)
   (let* ((props (text-properties-at (point)))
@@ -104,17 +104,17 @@ It's called narrowed to the changed part with point at the start.")
     (goto-char start)
     (message "Now showing %s phrase" (plist-get props 'state))))
 
-(defun splling-next-word ()
+(defun spllng-next-word ()
   "Go to the next changed word."
   (interactive)
-  (if (text-property-search-forward 'splling-changed nil nil t)
-      (text-property-search-backward 'splling-changed)
+  (if (text-property-search-forward 'spllng-changed nil nil t)
+      (text-property-search-backward 'spllng-changed)
     (message "No next word")))
 
-(defun splling-previous-word ()
+(defun spllng-previous-word ()
   "Go to the previous changed word."
   (interactive)
-  (unless (text-property-search-backward 'splling-changed nil nil t)
+  (unless (text-property-search-backward 'spllng-changed nil nil t)
     (message "No previous word")))
 
 (provide 'spllng)
