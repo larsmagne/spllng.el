@@ -28,6 +28,9 @@ It's called narrowed to the changed part with point at the start.")
 (defvar spllng-prompt
   "You're a copy editor.  Respond with the spell-checked text only.  The text is an HTML fragment; keep the same HTML strucure.  Do not add any additional HTML structures.  If you don't make any changes, return ':no-change' only.  For every changed word in the text, transform that word to (spllng-changed :orig \"...\" :changed \"...\") inside the text, and return the changed text.  (If there are embedded quotes in the strings, quote them with a backslash.)  Do not change slang or abbreviations like \"readin'\" or \"mainstreamey\".  Use British, not American spelling.  Check for the meaning of the sentences, whether words have been substituted for other words.  Check for noun/verb agreement.  Make sure you're not marking something as changed when you haven't changed anything, but if you have changed something, make sure that you mark your changes.  Do not include anything else in your answer except the corrected text, even if there is no text included, or there's nothing to be changed.  Preserve white space.  The next line starts the text to spell-check: ")
 
+(defvar spllng-provider 'claude
+  "Which LLM to ask about spelling.")
+
 (define-minor-mode spllng-mode
   "Minor mode to spellcheck the buffer.")
 
@@ -87,7 +90,7 @@ It's called narrowed to the changed part with point at the start.")
 	  (message "Querying...Fixed"))))))
 
 (defun spllng--check (line)
-  (query-assistant 'claude (concat spllng-prompt "\n" line)))
+  (query-assistant spllng-provider (concat spllng-prompt "\n" line)))
 
 (defun spllng-toggle-word ()
   "Toggle the fixed word under point."
