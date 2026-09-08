@@ -55,7 +55,8 @@ It's called narrowed to the changed part with point at the start.")
     (skip-chars-forward "\n\t ")
     (setq start (point))
     (message "Querying...")
-    (let ((new (spllng--check (buffer-substring start end))))
+    (let* ((region (spllng--massage-region start end))
+	   (new (spllng--check (car region))))
       (if (equal new ":no-change")
 	  (progn
 	    (message "No changes")
@@ -66,6 +67,16 @@ It's called narrowed to the changed part with point at the start.")
 	  (delete-region (point-min) (point-max))
 	  (insert new)
 	  (goto-char (point-min))
+	  ;; We've instructed the LLM to mark up spellchecked words
+	  ;; like this:
+	  ;;
+	  ;; Some wrng text.
+	  ;; ->
+	  ;; Some (spllng-changed :orig "wrng" :changed "wrong") text.
+	  ;;
+	  ;; That's probably more verbose than needed, but eh,
+	  ;; whatevs.  If makes it easy on this side when dealing with
+	  ;; strings that have embedded quote marks.
 	  (while (re-search-forward "(spllng-changed :orig " nil t)
 	    (goto-char (match-beginning 0))
 	    (let ((start (point))
@@ -74,6 +85,7 @@ It's called narrowed to the changed part with point at the start.")
 	      (let ((orig (plist-get (cdr form) :orig))
 		    (changed (plist-get (cdr form) :changed)))
 		(delete-region start end)
+		;; Tag up the text so that commands can interact with it.
 		(insert
 		 (propertize changed
 			     'face 'error
@@ -89,10 +101,39 @@ It's called narrowed to the changed part with point at the start.")
 				   (set-marker (make-marker)
 					       (+ start
 						  (length changed)))))))
+	  (spllng--restore-massage (cdr region))
 	  (goto-char (point-min))
 	  (run-hooks 'spllng-after-change-hook)
 	  (spllng-next-word)
 	  (message "Querying...Fixed"))))))
+
+(defun spllng--massage-region (start end)
+  "Return the pertinent text in the buffer between START and END.
+Filter out pure-HTML constructs to get the token count and
+thereby the amount of LLM time used down.
+
+Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
+  (let ((buf (current-buffer))
+	(table (make-hash-table :test #'equal))
+	(i 1))
+    (with-temp-buffer
+      (insert-buffer-substring buf start end)
+      (goto-char (point-min))
+      ;; The most egregious thing in Wordpress posts is how images are
+      ;; included -- there's a lot of text in those links.  So remove
+      ;; and stash them.
+      (while (re-search-forward "<a [^>]+><img [^>]+></a>" nil t)
+	(setf (gethash (format "%d" i) table)
+	      (buffer-substring (match-beginning 0) (match-end 0)))
+	(replace-match (format "<div id=\"sp-%d\"></div>" i) t t)
+	(cl-incf i))
+      (cons (buffer-string) table))))
+
+(defun spllng--restore-massage (table)
+  "Restore placeholders."
+  (goto-char (point-min))
+  (while (re-search-forward "<div id=\"sp-\\([0-9]+\\)\"></div>" nil t)
+    (replace-match (gethash (match-string 1) table) t t)))
 
 (defun spllng--check (line)
   (query-assistant spllng-provider (concat spllng-prompt "\n" line)))
