@@ -21,7 +21,7 @@
 
 (require 'cl-lib)
 
-(defvar spllng-after-change-hook 'ewp--hide-links
+(defvar spllng-after-change-hook nil
   "Hook run after changing a portion of the buffer.
 It's called narrowed to the changed part with point at the start.")
 
