@@ -46,9 +46,14 @@ It's called narrowed to the changed part with point at the start.")
   "Replace the region with a spell-checked region."
   (interactive "r")
   (let ((point (point-marker)))
+    ;; Don't send over any leading/trailing white space, because the
+    ;; LLM won't preserve that part.  So adjust start/end.
     (goto-char end)
     (skip-chars-backward "\n\t ")
     (setq end (point))
+    (goto-char start)
+    (skip-chars-forward "\n\t ")
+    (setq start (point))
     (message "Querying...")
     (let ((new (spllng--check (buffer-substring start end))))
       (if (equal new ":no-change")
