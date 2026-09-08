@@ -25,6 +25,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'query-assistant)
 
 (defvar spllng-after-change-hook nil
   "Hook run after changing a portion of the buffer.
