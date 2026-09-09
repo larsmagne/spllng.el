@@ -156,7 +156,7 @@ Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
       ;; The most egregious thing in Wordpress posts is how images are
       ;; included -- there's a lot of text in those links.  So remove
       ;; and stash them.
-      (while (re-search-forward "<a [^>]+><img [^>]+></a>" nil t)
+      (while (re-search-forward "<a [^>]+><img [^>]+></a>\\|<img [^>]+>" nil t)
 	(setf (gethash (format "%d" i) table)
 	      (buffer-substring (match-beginning 0) (match-end 0)))
 	(replace-match (format "<div id=\"sp-%d\"></div>" i) t t)
