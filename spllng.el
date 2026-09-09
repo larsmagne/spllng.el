@@ -69,14 +69,16 @@ See query-assistant.el for valid values.")
   "Minor mode to spellcheck the buffer.")
 
 (defvar-keymap spllng-mode-map
-  "C-c C-e" #'spllng)
+  "C-c C-e" #'spllng-region
+  "C-c C-f" #'spllng-buffer)
 
 (defvar-keymap spllng-word-map
   "C-c C-n" #'spllng-next-word
   "C-c C-p" #'spllng-previous-word
   "TAB" #'spllng-toggle-word)
 
-(defun spllng (start end)
+(defalias 'spllng 'spllng-region)
+(defun spllng-region (start end)
   "Replace the region with a spell-checked region."
   (interactive "r")
   (let ((point (point-marker)))
@@ -141,6 +143,11 @@ See query-assistant.el for valid values.")
 	  (spllng-next-word)
 	  (message "Querying...Fixed"))))))
 
+(defun spllng-buffer ()
+  "Replace the current buffer with a spell-checked version."
+  (interactive)
+  (spllng-region (point-min) (point-max)))
+
 (defun spllng--massage-region (start end)
   "Return the pertinent text in the buffer between START and END.
 Filter out pure-HTML constructs to get the token count and
@@ -156,7 +163,7 @@ Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
       ;; The most egregious thing in Wordpress posts is how images are
       ;; included -- there's a lot of text in those links.  So remove
       ;; and stash them.
-      (while (re-search-forward "<a [^>]+><img [^>]+></a>\\|<img [^>]+>" nil t)
+      (while (re-search-forward "<a [^>]+><img [^>]+></a>\\|<img [^>]+>\\|<blockquote>\\(.\\|\n\\)+</blockquote>" nil t)
 	(setf (gethash (format "%d" i) table)
 	      (buffer-substring (match-beginning 0) (match-end 0)))
 	(replace-match (format "<div id=\"sp-%d\"></div>" i) t t)
