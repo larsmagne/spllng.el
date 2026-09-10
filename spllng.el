@@ -56,7 +56,8 @@ space.
 
 Make sure that you spell-check the entire text.  Ensure that you
 return the same number of lines as you got -- don't delete lines
-that you don't think is HTML.
+that you don't think is HTML.  (In particular, don't remove
+header lines.)
 
 The next line starts the text to spell-check: "
   "The promt to send over to the LLM.  Should be adjusted to your needs.")
