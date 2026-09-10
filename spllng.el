@@ -54,6 +54,10 @@ your answer except the corrected text, even if there is no text
 included, or there's nothing to be changed.  Preserve white
 space.
 
+Make sure that you spell-check the entire text.  Ensure that you
+return the same number of lines as you got -- don't delete lines
+that you don't think is HTML.
+
 The next line starts the text to spell-check: "
   "The promt to send over to the LLM.  Should be adjusted to your needs.")
 
@@ -98,7 +102,6 @@ Use \\[spllng-next-word] to go to the next fixed word and
     (goto-char start)
     (skip-chars-forward "\n\t ")
     (setq start (point))
-    (message "Spell-checking...")
     (let* ((region (spllng--massage-region start end))
 	   (new (spllng--check (car region))))
       (if (equal new ":no-change")
@@ -198,6 +201,7 @@ Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
     (replace-match (gethash (match-string 1) table) t t)))
 
 (defun spllng--check (line)
+  (message "Spell-checking...")
   (query-assistant spllng-provider (concat spllng-prompt "\n" line)))
 
 (defun spllng-toggle-word ()
