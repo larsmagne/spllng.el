@@ -130,23 +130,27 @@ Use \\[spllng-next-word] to go to the next fixed word and
 		  (end (point)))
 	      (let ((orig (plist-get (cdr form) :orig))
 		    (changed (plist-get (cdr form) :changed)))
-		(delete-region start end)
-		;; Tag up the text so that commands can interact with it.
-		(insert
-		 (propertize changed
-			     'face 'error
-			     'spllng-changed t
-			     'keymap spllng-word-map
-			     'state 'changed
-			     'start (set-marker (make-marker) start)
-			     'original orig
-			     'changed changed))
-		(put-text-property (match-beginning 0)
-				   (+ start (length changed))
-				   'end
-				   (set-marker (make-marker)
-					       (+ start
-						  (length changed)))))))
+		;; Sometimes (by mistake) the LLM says that it's
+		;; changed something, but it hasn't.  Filter those
+		;; out.
+		(unless (equal orig changed)
+		  (delete-region start end)
+		  ;; Tag up the text so that commands can interact with it.
+		  (insert
+		   (propertize changed
+			       'face 'error
+			       'spllng-changed t
+			       'keymap spllng-word-map
+			       'state 'changed
+			       'start (set-marker (make-marker) start)
+			       'original orig
+			       'changed changed))
+		  (put-text-property (match-beginning 0)
+				     (+ start (length changed))
+				     'end
+				     (set-marker (make-marker)
+						 (+ start
+						    (length changed))))))))
 	  (spllng--restore-massage (cdr region))
 	  (goto-char (point-min))
 	  (run-hooks 'spllng-after-change-hook)
