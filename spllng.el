@@ -37,9 +37,10 @@ Do not add any additional HTML structures.
 If you don't make any changes, return ':no-change' only.
 
 For every changed word in the text, transform that word to
-(spllng-changed :orig \"...\" :changed \"...\")
-inside the text, and return the changed text.  (If there are
-embedded quotes in the strings, quote them with a backslash.)
+(spllng-changed :orig \"...\" :changed \"...\") inside the text,
+and return the changed text.  (If there are embedded quote
+characters in the strings, quote them with a backslash -- return
+:orig \"WHAT\\\"S\" if the string is \"WHAT\"S\".)
 
 Do not change slang or abbreviations like \"readin'\" or
 \"mainstreamey\".  Use British, not American spelling.
