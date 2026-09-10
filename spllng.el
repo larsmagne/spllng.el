@@ -27,10 +27,6 @@
 (require 'cl-lib)
 (require 'query-assistant)
 
-(defvar spllng-after-change-hook nil
-  "Hook run after changing a portion of the buffer.
-It's called narrowed to the changed part with point at the start.")
-
 (defvar spllng-prompt
   "You're a copy editor.
 Respond with the spell-checked text only.
@@ -64,6 +60,13 @@ The next line starts the text to spell-check: "
 (defvar spllng-provider 'claude
   "Which LLM to ask about spelling.
 See query-assistant.el for valid values.")
+
+(defvar spllng-debug nil
+  "If non-nil, debug the output from the LLM on errors.")
+
+(defvar spllng-after-change-hook nil
+  "Hook run after changing a portion of the buffer.
+It's called narrowed to the changed part with point at the start.")
 
 (define-minor-mode spllng-mode
   "Minor mode to spellcheck the buffer.")
@@ -105,6 +108,8 @@ Use \\[spllng-next-word] to go to the next fixed word and
 	;; Do some sanity checks on the returned data to see whether
 	;; the LLM has gone off the rails.
 	(when-let ((err (spllng--check-response (car region) new)))
+	  (when spllng-debug
+	    (spllng--display-difference (car region) new))
 	  (error "The LLM has apparently given a bad response this time; try again: %s"
 		 err))
 	(undo-boundary)
@@ -248,6 +253,19 @@ Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
       (format "LLM output has a different number of HTML elements than the original version: %d (orig) vs %d (new)"
 	      (plist-get ostats :ostats)
 	      (plist-get nstats :ostats))))))
+
+(defun spllng--display-difference (orig new)
+  (let ((oname (make-temp-name "/tmp/spllng1"))
+	(nname (make-temp-name "/tmp/spllng2")))
+    (unwind-protect
+	(progn
+	  (write-region orig nil oname)
+	  (write-region new nil nname)
+	  (diff oname nname))
+      (when (file-exists-p oname)
+	(delete-file oname))
+      (when (file-exists-p nname)
+	(delete-file nname)))))
 
 (defun spllng--text-stats (text)
   (with-temp-buffer
