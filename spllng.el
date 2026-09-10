@@ -79,7 +79,12 @@ See query-assistant.el for valid values.")
 
 (defalias 'spllng 'spllng-region)
 (defun spllng-region (start end)
-  "Replace the region with a spell-checked region."
+  "Replace the region with a spell-checked region.
+If something is replaced, you will be positioned on the first changed word.
+You can toggle the original/fixed with with the \\<spllng-word-map>\\[spllng-toggle-word] command.
+
+Use \\[spllng-next-word] to go to the next fixed word and
+\\[spllng-previous-word] to go to previous fixed word."
   (interactive "r")
   (let ((point (point-marker)))
     ;; Don't send over any leading/trailing white space, because the
@@ -97,6 +102,11 @@ See query-assistant.el for valid values.")
 	  (progn
 	    (message "No changes")
 	    (goto-char point))
+	;; Do some sanity checks on the returned data to see whether
+	;; the LLM has gone off the rails.
+	(when-let ((err (spllng--check-response (car region) new)))
+	  (error "The LLM has apparently given a bad response this time; try again: %s"
+		 err))
 	(undo-boundary)
 	(save-restriction
 	  (narrow-to-region start end)
@@ -214,6 +224,42 @@ Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
   (interactive)
   (unless (text-property-search-backward 'spllng-changed nil nil t)
     (message "No previous word")))
+
+(defun spllng--check-response (orig new)
+  "Return nil for OK and the error message if there's an error."
+  (let ((ostats (spllng--text-stats orig))
+	(nstats (spllng--text-stats new)))
+    (cond
+     ((< (length new) (length orig))
+      ;; This should never happen -- I mean, a fixed word may be shorter
+      ;; than the original word, but since it also includes the original
+      ;; text in the response, this would be an error.
+      "LLM output shorter than the original text")
+     ((< (plist-get nstats :lines) (plist-get ostats :lines))
+      ;; Perhaps the LLM decided to concatenate some lines.
+      "LLM output has fewer lines than the original text")
+     ((not (= (plist-get nstats :html) (plist-get ostats :html)))
+      ;; The number of HTML elements should remain exactly the same --
+      ;; nothing added, nothing removed.
+      (format "LLM output has a different number of HTML elements than the original version: %d (orig) vs %d (new)"
+	      (plist-get ostats :ostats)
+	      (plist-get nstats :ostats))))))
+
+(defun spllng--text-stats (text)
+  (with-temp-buffer
+    (insert text)
+    (goto-char (point-min))
+    (let ((lines 0)
+	  (html 0))
+      ;; Count lines.
+      (while (not (eobp))
+	(cl-incf lines)
+	(forward-line 1))
+      ;; Count HTML.
+      (while (re-search-forward "<[a-zA-Z]+\\b" nil t)
+	(cl-incf html))
+      (list :lines lines
+	    :html html))))
 
 (provide 'spllng)
 
