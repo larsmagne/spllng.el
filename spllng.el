@@ -100,7 +100,6 @@ Use \\[spllng-next-word] to go to the next fixed word and
 	   (new (spllng--check region))
 	   (json (mapcar (lambda (a) (cl-coerce a 'list))
 			 (spllng--parse-json new))))
-      (setq j json)
       (if (equal new "[]")
 	  (progn
 	    (message "No changes")
