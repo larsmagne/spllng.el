@@ -106,14 +106,15 @@ Use \\[spllng-next-word] to go to the next fixed word and
 	(undo-boundary)
 	(save-restriction
 	  (narrow-to-region start end)
-	  (goto-char (point-min))
 	  ;; Do the replacements.
 	  (cl-loop
 	   for (orig-phrase replacement-phrase) in json
-	   when (search-forward orig-phrase nil t)
+	   when (progn
+		  (goto-char (point-min))
+		  (search-forward orig-phrase nil t))
 	   do
 	   (goto-char (match-beginning 0))
-	   (cl-destructuring-bind (prefix orig replacement suffix)
+	   (cl-destructuring-bind (prefix orig replacement _suffix)
 	       (spllng--string-difference orig-phrase replacement-phrase)
 	     (forward-char (length prefix))
 	     (let ((start (point)))
@@ -133,8 +134,7 @@ Use \\[spllng-next-word] to go to the next fixed word and
 				  'end
 				  (set-marker (make-marker)
 					      (+ start
-						 (length replacement))))
-	       (forward-char (length suffix)))))
+						 (length replacement)))))))
 	  (goto-char (point-min))
 	  (run-hooks 'spllng-after-change-hook)
 	  (spllng-next-word)
