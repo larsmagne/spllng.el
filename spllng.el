@@ -28,47 +28,56 @@
 (require 'query-assistant)
 
 (defvar spllng-prompt
-  "You're a copy editor.
-Respond with the spell-checked text only.
+  "You're a spell checker and a copy editor.
+You will be given a text that is a possibly an HTML fragment, but
+can be any text format.  Spell-check this text.
 
-The text you're given is an HTML fragment; keep the same HTML strucure.
-Do not add any additional HTML structures.
+Check for the meaning of the sentences, whether words have been
+substituted for other words.  Check for noun/verb agreement etc.
 
-If you don't make any changes, return ':no-change' only.
-
-For every changed word in the text, transform that word to
-(spllng-changed :orig \"...\" :changed \"...\") inside the text,
-and return the changed text.  (If there are embedded quote
-characters in the strings, quote them with a backslash -- return
-:orig \"WHAT\\\"S\" if the string is \"WHAT\"S\".)
+Make sure that you spell-check the entire text.
 
 Do not change slang or abbreviations like \"readin'\" or
 \"mainstreamey\".  Use British, not American spelling.
 
-Check for the meaning of the sentences, whether words have been
-substituted for other words.  Check for noun/verb agreement.
+Return an array of things to be changed in JSON format, looking
+like this:
 
-Make sure you're not marking something as changed when you
-haven't changed anything, but if you have changed something, make
-sure that you mark your changes.  Do not include anything else in
-your answer except the corrected text, even if there is no text
-included, or there's nothing to be changed.  Preserve white
-space.
+[
+ [\"foo \\\\(bzr\\\\) zot\", \"bar\"],
+ ...
+]
 
-Make sure that you spell-check the entire text.  Ensure that you
-return the same number of lines as you got -- don't delete lines
-that you don't think is HTML.  (In particular, don't remove
-header lines.)
+Format the results as a JSON file like this, using Emacs Lisp
+regular expression syntax. The match field should be a large
+enough regular expression to capture context and avoid ambiguity,
+and it should have a single capture group \\(...\\) highlighting
+what specifically needs to be changed. The suggested field should
+have just the words that replace the capture group in the match
+field.  Include the capture group even if there is nothing else
+in the regexp.
+
+Be very careful about making sure that the JSON is valid (no
+trailing or missing commas, all strings properly terminated, all
+delimiters properly matched up). Return just the JSON.  Don't
+wrap the JSON in \"```\" characters.
+
+Ensure that each regexp contains exactly one Emacs Lisp-regexp
+syntax capture group.  This means that a regexp like this is
+invalid:
+
+  \"this (is) regexp\"
+
+This is valid:
+
+  \"this \\\\(is\\\\) regexp\"
 
 The next line starts the text to spell-check: "
-  "The promt to send over to the LLM.  Should be adjusted to your needs.")
+  "The prompt to send over to the LLM.  Should be adjusted to your needs.")
 
 (defvar spllng-provider 'claude
   "Which LLM to ask about spelling.
 See query-assistant.el for valid values.")
-
-(defvar spllng-debug nil
-  "If non-nil, debug the output from the LLM on errors.")
 
 (defvar spllng-after-change-hook nil
   "Hook run after changing a portion of the buffer.
@@ -105,67 +114,57 @@ Use \\[spllng-next-word] to go to the next fixed word and
     (skip-chars-forward "\n\t ")
     (setq start (point))
     (let* ((region (spllng--massage-region start end))
-	   (new (spllng--check (car region))))
-      (if (equal new ":no-change")
+	   (new (spllng--check region))
+	   (json (mapcar (lambda (a) (cl-coerce a 'list))
+			 (json-parse-string new))))
+      (if (equal new "[]")
 	  (progn
 	    (message "No changes")
 	    (goto-char point))
-	;; Do some sanity checks on the returned data to see whether
-	;; the LLM has gone off the rails.
-	(when-let ((err (spllng--check-response (car region) new)))
-	  (when spllng-debug
-	    (spllng--display-difference (car region) new))
-	  (error "The LLM has apparently given a bad response this time; try again: %s"
-		 err))
+	(unless (spllng--check-json json)
+	  (error "The LLM returned invalid data: %s" new))
 	(undo-boundary)
 	(save-restriction
 	  (narrow-to-region start end)
-	  (delete-region (point-min) (point-max))
-	  (insert new)
 	  (goto-char (point-min))
-	  ;; We've instructed the LLM to mark up spellchecked words
-	  ;; like this:
-	  ;;
-	  ;; Some wrng text.
-	  ;; ->
-	  ;; Some (spllng-changed :orig "wrng" :changed "wrong") text.
-	  ;;
-	  ;; That's probably more verbose than needed, but eh,
-	  ;; whatevs.  If makes it easy on this side when dealing with
-	  ;; strings that have embedded quote marks.
-	  (while (re-search-forward "(spllng-changed :orig " nil t)
-	    (goto-char (match-beginning 0))
-	    (let ((start (point))
-		  (form (read (current-buffer)))
-		  (end (point)))
-	      (let ((orig (plist-get (cdr form) :orig))
-		    (changed (plist-get (cdr form) :changed)))
+	  ;; Do the replacements.
+	  (cl-loop
+	   for (regexp replacement) in json
+	   when (re-search-forward regexp nil t)
+	   do (let ((orig (match-string 1))
+		    (start (match-beginning 1)))
+		(goto-char start)
+		(delete-region start (match-end 1))
 		;; Sometimes (by mistake) the LLM says that it's
 		;; changed something, but it hasn't.  Filter those
 		;; out.
-		(unless (equal orig changed)
-		  (delete-region start end)
+		(unless (equal orig replacement)
 		  ;; Tag up the text so that commands can interact with it.
 		  (insert
-		   (propertize changed
+		   (propertize replacement
 			       'face 'error
 			       'spllng-changed t
 			       'keymap spllng-word-map
 			       'state 'changed
 			       'start (set-marker (make-marker) start)
 			       'original orig
-			       'changed changed))
+			       'changed replacement))
 		  (put-text-property (match-beginning 0)
-				     (+ start (length changed))
+				     (+ start (length replacement))
 				     'end
 				     (set-marker (make-marker)
 						 (+ start
-						    (length changed))))))))
-	  (spllng--restore-massage (cdr region))
+						    (length replacement)))))))
 	  (goto-char (point-min))
 	  (run-hooks 'spllng-after-change-hook)
 	  (spllng-next-word)
 	  (message "Spell-checking...Done"))))))
+
+(defun spllng--check-json (json)
+  (cl-loop for (regexp _replacement) in json
+	   unless (string-match-p "\\\\(.*\\\\)" regexp)
+	   return nil
+	   finally (return t)))
 
 (defun spllng-buffer ()
   "Replace the current buffer with a spell-checked version."
@@ -178,9 +177,7 @@ Filter out pure-HTML constructs to get the token count and
 thereby the amount of LLM time used down.
 
 Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
-  (let ((buf (current-buffer))
-	(table (make-hash-table :test #'equal))
-	(i 1))
+  (let ((buf (current-buffer)))
     (with-temp-buffer
       (insert-buffer-substring buf start end)
       (goto-char (point-min))
@@ -190,17 +187,8 @@ Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
       ;; they're presumably quoted bits that you don't want to
       ;; spellcheck.
       (while (re-search-forward "<a [^>]+?><img [^>]+?></a>\\|<img [^>]+?>\\|<blockquote>[^z-a]+?</blockquote>" nil t)
-	(setf (gethash (format "%d" i) table)
-	      (buffer-substring (match-beginning 0) (match-end 0)))
-	(replace-match (format "<div id=\"sp-%d\"></div>" i) t t)
-	(cl-incf i))
-      (cons (buffer-string) table))))
-
-(defun spllng--restore-massage (table)
-  "Restore placeholders."
-  (goto-char (point-min))
-  (while (re-search-forward "<div id=\"sp-\\([0-9]+\\)\"></div>" nil t)
-    (replace-match (gethash (match-string 1) table) t t)))
+	(replace-match "" t t))
+      (buffer-string))))
 
 (defun spllng--check (line)
   (message "Spell-checking...")
@@ -239,55 +227,6 @@ Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
   (interactive)
   (unless (text-property-search-backward 'spllng-changed nil nil t)
     (message "No previous word")))
-
-(defun spllng--check-response (orig new)
-  "Return nil for OK and the error message if there's an error."
-  (let ((ostats (spllng--text-stats orig))
-	(nstats (spllng--text-stats new)))
-    (cond
-     ((< (length new) (length orig))
-      ;; This should never happen -- I mean, a fixed word may be shorter
-      ;; than the original word, but since it also includes the original
-      ;; text in the response, this would be an error.
-      "LLM output shorter than the original text")
-     ((< (plist-get nstats :lines) (plist-get ostats :lines))
-      ;; Perhaps the LLM decided to concatenate some lines.
-      "LLM output has fewer lines than the original text")
-     ((not (= (plist-get nstats :html) (plist-get ostats :html)))
-      ;; The number of HTML elements should remain exactly the same --
-      ;; nothing added, nothing removed.
-      (format "LLM output has a different number of HTML elements than the original version: %d (orig) vs %d (new)"
-	      (plist-get ostats :ostats)
-	      (plist-get nstats :ostats))))))
-
-(defun spllng--display-difference (orig new)
-  (let ((oname (make-temp-name "/tmp/spllng1"))
-	(nname (make-temp-name "/tmp/spllng2")))
-    (unwind-protect
-	(progn
-	  (write-region orig nil oname)
-	  (write-region new nil nname)
-	  (diff oname nname))
-      (when (file-exists-p oname)
-	(delete-file oname))
-      (when (file-exists-p nname)
-	(delete-file nname)))))
-
-(defun spllng--text-stats (text)
-  (with-temp-buffer
-    (insert text)
-    (goto-char (point-min))
-    (let ((lines 0)
-	  (html 0))
-      ;; Count lines.
-      (while (not (eobp))
-	(cl-incf lines)
-	(forward-line 1))
-      ;; Count HTML.
-      (while (re-search-forward "<[a-zA-Z]+\\b" nil t)
-	(cl-incf html))
-      (list :lines lines
-	    :html html))))
 
 (provide 'spllng)
 
