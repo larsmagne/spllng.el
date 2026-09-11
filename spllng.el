@@ -75,6 +75,9 @@ This is valid:
 The next line starts the text to spell-check: "
   "The prompt to send over to the LLM.  Should be adjusted to your needs.")
 
+;;; Prompt partly adapted from
+;;; https://codeberg.org/sachac/learn-lang/src/branch/main/learn-lang-flycheck-gptel.el
+
 (defvar spllng-provider 'claude
   "Which LLM to ask about spelling.
 See query-assistant.el for valid values.")
