@@ -175,7 +175,7 @@ Use \\[spllng-next-word] to go to the next fixed word and
     ;; The LLM somehow likes wrapping the json in "```", so check and
     ;; remove that.
     (goto-char (point-min))
-    (when (looking-at "```")
+    (when (looking-at "```\\(json\\)?")
       (replace-match "")
       (goto-char (point-max))
       (and (re-search-backward "```" nil t)
