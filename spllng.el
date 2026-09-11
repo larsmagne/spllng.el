@@ -88,7 +88,7 @@ It's called narrowed to the changed part with point at the start.")
 
 (defalias 'spllng 'spllng-region)
 (defun spllng-region (start end)
-  "Replace the region with a spell-checked region.
+  "Spellcheck the region between START and END.
 If something is replaced, you will be positioned on the first changed word.
 You can toggle the original/fixed with with the \\<spllng-word-map>\\[spllng-toggle-word] command.
 
@@ -111,11 +111,14 @@ Use \\[spllng-next-word] to go to the next fixed word and
 	  (cl-loop
 	   for (orig-phrase replacement-phrase) in json
 	   when (progn
+		  ;; The phrases may be returned in any order, so
+		  ;; search the entire region.
 		  (goto-char (point-min))
 		  (search-forward orig-phrase nil t))
 	   do
 	   (goto-char (match-beginning 0))
 	   (cl-destructuring-bind (prefix orig replacement _suffix)
+	       ;; Find the bit that's changed so we can highlight it.
 	       (spllng--string-difference orig-phrase replacement-phrase)
 	     (forward-char (length prefix))
 	     (let ((start (point)))
@@ -159,13 +162,14 @@ Use \\[spllng-next-word] to go to the next fixed word and
        (error "Couldn't parse JSON: %s" (buffer-string))))))
 
 (defun spllng-buffer ()
-  "Replace the current buffer with a spell-checked version."
+  "Spellcheck the current buffer.
+See `spllng-region' for details."
   (interactive)
   (spllng-region (point-min) (point-max)))
 
 (defun spllng--string-difference (s1 s2)
   "Return four strings.
-The common prefix, the s1 diff, the common suffix, the s2 diff."
+The common prefix, the S1 diff, the S2 diff, and the common suffix."
   (let* ((prefix (spllng--string-prefix s1 s2))
 	 (suffix (reverse
 		  (spllng--string-prefix
@@ -192,9 +196,6 @@ The common prefix, the s1 diff, the common suffix, the s2 diff."
 	   finally (cl-return (substring s1 0 (or chop 0)))))
 
 (defun spllng--massage-region (start end)
-  "Return the pertinent text in the buffer between START and END.
-Filter out pure-HTML constructs to get the token count and
-thereby the amount of LLM time used down."
   (let ((buf (current-buffer)))
     (with-temp-buffer
       (insert-buffer-substring buf start end)
@@ -215,7 +216,7 @@ thereby the amount of LLM time used down."
 			   "\n" line)))
 
 (defun spllng-toggle-word ()
-  "Toggle the fixed word under point."
+  "Toggle the spellchecked word/phrase under point."
   (interactive)
   (let* ((props (text-properties-at (point)))
 	 (new (if (eq (plist-get props 'state) 'changed)
@@ -236,14 +237,14 @@ thereby the amount of LLM time used down."
     (message "Now showing %s phrase" (plist-get props 'state))))
 
 (defun spllng-next-word ()
-  "Go to the next changed word."
+  "Go to the next spellchecked word."
   (interactive)
   (if-let ((match (text-property-search-forward 'spllng-changed nil nil t)))
       (goto-char (prop-match-beginning match))
     (message "No next word")))
 
 (defun spllng-previous-word ()
-  "Go to the previous changed word."
+  "Go to the previous spellchecked word."
   (interactive)
   (unless (text-property-search-backward 'spllng-changed nil nil t)
     (message "No previous word")))
