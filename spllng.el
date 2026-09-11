@@ -44,33 +44,19 @@ Return an array of things to be changed in JSON format, looking
 like this:
 
 [
- [\"foo \\\\(bzr\\\\) zot\", \"bar\"],
+ [\"foo bzr zot\", \"foo bar zot\"],
  ...
 ]
 
-Format the results as a JSON file like this, using Emacs Lisp
-regular expression syntax. The match field should be a large
-enough regular expression to capture context and avoid ambiguity,
-and it should have a single capture group \\(...\\) highlighting
-what specifically needs to be changed. The suggested field should
-have just the words that replace the capture group in the match
-field.  Include the capture group even if there is nothing else
-in the regexp.
+The first field should match text to be replaced.  The match
+field should be large enough context and avoid ambiguity.
+
+The second field should be the corrected phrase.
 
 Be very careful about making sure that the JSON is valid (no
 trailing or missing commas, all strings properly terminated, all
 delimiters properly matched up). Return just the JSON.  Don't
 wrap the JSON in \"```\" characters.
-
-Ensure that each regexp contains exactly one Emacs Lisp-regexp
-syntax capture group.  This means that a regexp like this is
-invalid:
-
-  \"this (is) regexp\"
-
-This is valid:
-
-  \"this \\\\(is\\\\) regexp\"
 
 The next line starts the text to spell-check: "
   "The prompt to send over to the LLM.  Should be adjusted to your needs.")
@@ -108,69 +94,51 @@ Use \\[spllng-next-word] to go to the next fixed word and
 \\[spllng-previous-word] to go to previous fixed word."
   (interactive "r")
   (let ((point (point-marker)))
-    ;; Don't send over any leading/trailing white space, because the
-    ;; LLM won't preserve that part.  So adjust start/end.
-    (goto-char end)
-    (skip-chars-backward "\n\t ")
-    (setq end (point))
-    (goto-char start)
-    (skip-chars-forward "\n\t ")
-    (setq start (point))
     (let* ((region (spllng--massage-region start end))
 	   (new (spllng--check region))
 	   (json (mapcar (lambda (a) (cl-coerce a 'list))
 			 (spllng--parse-json new))))
+      (setq j json)
       (if (equal new "[]")
 	  (progn
 	    (message "No changes")
 	    (goto-char point))
-	(unless (spllng--check-json json)
-	  (error "The LLM returned invalid data: %s" new))
 	(undo-boundary)
 	(save-restriction
 	  (narrow-to-region start end)
 	  (goto-char (point-min))
 	  ;; Do the replacements.
 	  (cl-loop
-	   for (regexp replacement) in json
-	   when (re-search-forward regexp nil t)
-	   do (let ((orig (match-string 1))
-		    (start (match-beginning 1)))
-		(goto-char start)
-		(delete-region start (match-end 1))
-		;; Sometimes (by mistake) the LLM says that it's
-		;; changed something, but it hasn't.  Filter those
-		;; out.
-		(unless (equal orig replacement)
-		  ;; Tag up the text so that commands can interact with it.
-		  (insert
-		   (propertize replacement
-			       'face 'error
-			       'spllng-changed t
-			       'keymap spllng-word-map
-			       'state 'changed
-			       'start (set-marker (make-marker) start)
-			       'original orig
-			       'changed replacement))
-		  (put-text-property (match-beginning 0)
-				     (+ start (length replacement))
-				     'end
-				     (set-marker (make-marker)
-						 (+ start
-						    (length replacement)))))))
+	   for (orig-phrase replacement-phrase) in json
+	   when (search-forward orig-phrase nil t)
+	   do
+	   (goto-char (match-beginning 0))
+	   (cl-destructuring-bind (prefix orig replacement suffix)
+	       (spllng--string-difference orig-phrase replacement-phrase)
+	     (forward-char (length prefix))
+	     (let ((start (point)))
+	       (delete-region start (+ start (length orig)))
+	       ;; Tag up the text so that commands can interact with it.
+	       (insert
+		(propertize replacement
+			    'face 'error
+			    'spllng-changed t
+			    'keymap spllng-word-map
+			    'state 'changed
+			    'start (set-marker (make-marker) start)
+			    'original orig
+			    'changed replacement))
+	       (put-text-property (match-beginning 0)
+				  (+ start (length replacement))
+				  'end
+				  (set-marker (make-marker)
+					      (+ start
+						 (length replacement))))
+	       (forward-char (length suffix)))))
 	  (goto-char (point-min))
 	  (run-hooks 'spllng-after-change-hook)
 	  (spllng-next-word)
 	  (message "Spell-checking...Done"))))))
-
-(defun spllng--check-json (json)
-  (cl-loop for (regexp _replacement) in json
-	   when (or (not (string-match-p "\\\\(.*\\\\)" regexp))
-		    (not (condition-case _err
-			     (or (string-match-p regexp "") t)
-			   (error nil))))
-	   return nil
-	   finally (return t)))
 
 (defun spllng--parse-json (string)
   (with-temp-buffer
@@ -194,12 +162,36 @@ Use \\[spllng-next-word] to go to the next fixed word and
   (interactive)
   (spllng-region (point-min) (point-max)))
 
+(defun spllng--string-difference (s1 s2)
+  "Return four strings.
+The common prefix, the s1 diff, the common suffix, the s2 diff."
+  (let* ((prefix (spllng--string-prefix s1 s2))
+	 (suffix (reverse
+		  (spllng--string-prefix (reverse s1) (reverse s2)))))
+    (list prefix
+	  (substring s1 (length prefix)
+		     (- (length s1) (length suffix)))
+	  (substring s2 (length prefix)
+		     (- (length s2) (length suffix)))
+	  suffix)))
+
+(defun spllng--string-prefix (s1 s2)
+  (cl-loop with chop
+	   for i from 0
+	   for c1 across s1
+	   for c2 across s2
+	   while (= c1 c2)
+	   ;; We want a word, so chop after a space.
+	   when (and (> i 0)
+		     (not (= c1 ?\s))
+		     (= (elt s1 (1- i)) ?\s))
+	   do (setq chop i)
+	   finally (cl-return (substring s1 0 (or chop 0)))))
+
 (defun spllng--massage-region (start end)
   "Return the pertinent text in the buffer between START and END.
 Filter out pure-HTML constructs to get the token count and
-thereby the amount of LLM time used down.
-
-Return a tuple of FILTERED-BUFFER-TEXT and HTML-TABLE."
+thereby the amount of LLM time used down."
   (let ((buf (current-buffer)))
     (with-temp-buffer
       (insert-buffer-substring buf start end)
