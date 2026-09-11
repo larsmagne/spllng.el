@@ -116,7 +116,7 @@ Use \\[spllng-next-word] to go to the next fixed word and
     (let* ((region (spllng--massage-region start end))
 	   (new (spllng--check region))
 	   (json (mapcar (lambda (a) (cl-coerce a 'list))
-			 (json-parse-string new))))
+			 (spllng--parse-json new))))
       (if (equal new "[]")
 	  (progn
 	    (message "No changes")
@@ -165,6 +165,23 @@ Use \\[spllng-next-word] to go to the next fixed word and
 	   unless (string-match-p "\\\\(.*\\\\)" regexp)
 	   return nil
 	   finally (return t)))
+
+(defun spllng--parse-json (string)
+  (with-temp-buffer
+    (insert string)
+    ;; The LLM somehow likes wrapping the json in "```", so check and
+    ;; remove that.
+    (goto-char (point-min))
+    (when (looking-at "```")
+      (replace-match "")
+      (goto-char (point-max))
+      (and (re-search-backward "```" nil t)
+	   (replace-match "")))
+    (goto-char (point-min))
+    (condition-case _err
+	(json-parse-buffer)
+      (error
+       (error "Couldn't parse JSON: %s" (buffer-string))))))
 
 (defun spllng-buffer ()
   "Replace the current buffer with a spell-checked version."
