@@ -28,6 +28,11 @@
 (require 'query-assistant)
 
 (defvar spllng-prompt
+  "Do not change slang or abbreviations like \"readin'\" or
+\"mainstreamey\".  Use British, not American spelling."
+  "The prompt to send over to the LLM.  Should be adjusted to your needs.")
+
+(defvar spllng--system-prompt
   "You're a spell checker and a copy editor.
 You will be given a text that is a possibly an HTML fragment, but
 can be any text format.  Spell-check this text.
@@ -37,8 +42,7 @@ substituted for other words.  Check for noun/verb agreement etc.
 
 Make sure that you spell-check the entire text.
 
-Do not change slang or abbreviations like \"readin'\" or
-\"mainstreamey\".  Use British, not American spelling.
+%s
 
 Return an array of things to be changed in JSON format, looking
 like this:
@@ -59,10 +63,8 @@ delimiters properly matched up). Return just the JSON.  Don't
 wrap the JSON in \"```\" characters.
 
 The next line starts the text to spell-check: "
-  "The prompt to send over to the LLM.  Should be adjusted to your needs.")
-
-;;; Prompt partly adapted from
-;;; https://codeberg.org/sachac/learn-lang/src/branch/main/learn-lang-flycheck-gptel.el
+  "The system to send over to the LLM.  Probably don't change this.
+The user-defined prompt is inserted where the `%s' is.")
 
 (defvar spllng-provider 'claude
   "Which LLM to ask about spelling.
@@ -207,7 +209,9 @@ thereby the amount of LLM time used down."
 
 (defun spllng--check (line)
   (message "Spell-checking...")
-  (query-assistant spllng-provider (concat spllng-prompt "\n" line)))
+  (query-assistant spllng-provider
+		   (concat (format spllng--system-prompt spllng-prompt)
+			   "\n" line)))
 
 (defun spllng-toggle-word ()
   "Toggle the fixed word under point."
