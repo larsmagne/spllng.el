@@ -165,7 +165,10 @@ Use \\[spllng-next-word] to go to the next fixed word and
 
 (defun spllng--check-json (json)
   (cl-loop for (regexp _replacement) in json
-	   unless (string-match-p "\\\\(.*\\\\)" regexp)
+	   when (or (not (string-match-p "\\\\(.*\\\\)" regexp))
+		    (not (condition-case _err
+			     (or (string-match-p regexp "") t)
+			   (error nil))))
 	   return nil
 	   finally (return t)))
 
