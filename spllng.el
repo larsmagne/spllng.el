@@ -169,7 +169,9 @@ Use \\[spllng-next-word] to go to the next fixed word and
 The common prefix, the s1 diff, the common suffix, the s2 diff."
   (let* ((prefix (spllng--string-prefix s1 s2))
 	 (suffix (reverse
-		  (spllng--string-prefix (reverse s1) (reverse s2)))))
+		  (spllng--string-prefix
+		   (reverse (substring s1 (length prefix)))
+		   (reverse (substring s2 (length prefix)))))))
     (list prefix
 	  (substring s1 (length prefix)
 		     (- (length s1) (length suffix)))
