@@ -187,12 +187,12 @@ The common prefix, the S1 diff, the S2 diff, and the common suffix."
 	   for i from 0
 	   for c1 across s1
 	   for c2 across s2
-	   while (= c1 c2)
 	   ;; We want a word, so chop after a space.
 	   when (and (> i 0)
 		     (not (= c1 ?\s))
 		     (= (elt s1 (1- i)) ?\s))
 	   do (setq chop i)
+	   while (= c1 c2)
 	   finally (cl-return (substring s1 0 (or chop 0)))))
 
 (defun spllng--massage-region (start end)
